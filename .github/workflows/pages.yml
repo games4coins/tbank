@@ -1,6 +1,11 @@
 name: Publish calendar
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - '.github/workflows/pages.yml'
   workflow_run:
     workflows: ["Dividend data"]
     types: [completed]
@@ -13,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && vars.PUBLISH_PAGES == 'true')
+    if: github.event_name == 'workflow_dispatch' || (vars.PUBLISH_PAGES == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')))
     runs-on: ubuntu-latest
     environment:
       name: github-pages
