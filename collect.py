@@ -1,15 +1,25 @@
-import os,json,urllib.request,urllib.error,datetime,time, pathlib
+import os,json,urllib.request,urllib.error,datetime,time, pathlib, ssl
 BASE="https://invest-public-api.tbank.ru/rest/tinkoff.public.invest.api.contract.v1.InstrumentsService/"
 TOKEN=os.environ.get("TBANK_TOKEN","").strip()
 if not TOKEN:
     raise SystemExit("::error::Missing TBANK_TOKEN. Add repository Actions secret TBANK_TOKEN in Settings.")
 if TOKEN.lower().startswith("bearer "):
     TOKEN=TOKEN[7:].strip()
+# Additional trust is scoped to this API client, not the system.
+TLS=ssl.create_default_context()
+ca=os.environ.get("TBANK_CA_FILE")
+if ca:
+    TLS.load_verify_locations(cafile=ca)
+    print("T-Invest CA bundle loaded; TLS verification enabled",flush=True)
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+OPENER=urllib.request.build_opener(NoRedirect(),urllib.request.HTTPSHandler(context=TLS))
 def call(method,body):
     req=urllib.request.Request(BASE+method,data=json.dumps(body).encode(),headers={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"})
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req,timeout=30) as r:
+            with OPENER.open(req,timeout=30) as r:
                 return json.load(r)
         except urllib.error.HTTPError as e:
             print(f"{method}: HTTP {e.code}; tracking-id={e.headers.get('x-tracking-id','-')}",flush=True)
@@ -21,6 +31,8 @@ def call(method,body):
             raise
         except urllib.error.URLError as e:
             print(f"{method}: network error ({type(e.reason).__name__})",flush=True)
+            if isinstance(e.reason,ssl.SSLCertVerificationError):
+                raise SystemExit("::error::TLS certificate verification failed: "+e.reason.verify_message)
             if attempt<2:
                 time.sleep(3*(attempt+1))
                 continue
