@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - 'index.html'
+      - 'market.html'
+      - 'bonds.html'
       - '.github/workflows/pages.yml'
   workflow_run:
-    workflows: ["Dividend data"]
+    workflows: ["Dividend data", "Market radar", "Bond calendar"]
     types: [completed]
 permissions:
   contents: read
@@ -32,6 +34,9 @@ jobs:
         run: |
           mkdir site
           cp index.html site/
+          for file in market.html market.json bonds.html bonds.json; do
+            if test -f "$file"; then cp "$file" site/; fi
+          done
           if test -f data.json; then cp data.json site/; fi
           if test -f portfolio.enc.json; then cp portfolio.enc.json site/; fi
       - uses: actions/upload-pages-artifact@v3
