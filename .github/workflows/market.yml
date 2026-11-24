@@ -1,0 +1,48 @@
+name: Market radar
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,37 7-20 * * 1-5'
+permissions:
+  contents: write
+concurrency:
+  group: market-radar
+  cancel-in-progress: false
+jobs:
+  market:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download official Russian CA bundle (verified HTTPS and SHA256)
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --retry 2 https://gu-st.ru/content/Other/doc/russiantrustedca.pem -o "$RUNNER_TEMP/tbank-ca.pem"
+          echo "6d1b66e7c1aa2512ad3abb50d6a6f144c9ee9d80fd7fbe1c9255a39f8e790944  $RUNNER_TEMP/tbank-ca.pem" | sha256sum --check
+          echo "TBANK_CA_FILE=$RUNNER_TEMP/tbank-ca.pem" >> "$GITHUB_ENV"
+      - name: Collect market snapshots
+        env:
+          TBANK_TOKEN: ${{ secrets.TBANK_TOKEN }}
+        run: python collect_market.py
+      - name: Save snapshot
+        run: |
+          cp market.json "$RUNNER_TEMP/market.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$RUNNER_TEMP/market.json" market.json
+            git add -- market.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m "Refresh market snapshot"
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 3))
+          done
+          exit 1
