@@ -1,6 +1,15 @@
 name: Dividend data
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Update mode'
+        type: choice
+        options:
+          - all
+          - portfolio
+          - dividends
+        default: all
   schedule:
     - cron: '23 5 * * *'
 permissions:
@@ -27,17 +36,21 @@ jobs:
           echo "6d1b66e7c1aa2512ad3abb50d6a6f144c9ee9d80fd7fbe1c9255a39f8e790944  $RUNNER_TEMP/tbank-ca.pem" | sha256sum --check
           echo "TBANK_CA_FILE=$RUNNER_TEMP/tbank-ca.pem" >> "$GITHUB_ENV"
       - name: Collect dividend events
+        if: inputs.mode != 'portfolio'
         env:
           TBANK_TOKEN: ${{ secrets.TBANK_TOKEN }}
         run: python collect.py
       - name: Stage fresh market data
         run: |
-          cp data.json "$RUNNER_TEMP/radar-data.json"
+          if [ "${{ inputs.mode }}" != "portfolio" ]; then cp data.json "$RUNNER_TEMP/radar-data.json"; fi
           rm -f portfolio.enc.json
       - name: Install portfolio encryption library
+        if: inputs.mode != 'dividends'
         run: python -m pip install cryptography==46.0.3
       - name: Encrypt personal portfolio
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        if: inputs.mode != 'dividends'
+        id: portfolio
+        continue-on-error: true
         env:
           TBANK_TOKEN: ${{ secrets.TBANK_TOKEN }}
           PORTFOLIO_PASSWORD: ${{ secrets.PORTFOLIO_PASSWORD }}
@@ -46,14 +59,16 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if test -f portfolio.enc.json; then
+          if [ "${{ steps.portfolio.outcome }}" = "success" ] && test -f portfolio.enc.json; then
             cp portfolio.enc.json "$RUNNER_TEMP/radar-portfolio.enc.json"
           fi
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            cp "$RUNNER_TEMP/radar-data.json" data.json
-            git add -- data.json
+            if test -f "$RUNNER_TEMP/radar-data.json"; then
+              cp "$RUNNER_TEMP/radar-data.json" data.json
+              git add -- data.json
+            fi
             if test -f "$RUNNER_TEMP/radar-portfolio.enc.json"; then
               cp "$RUNNER_TEMP/radar-portfolio.enc.json" portfolio.enc.json
               git add -- portfolio.enc.json
