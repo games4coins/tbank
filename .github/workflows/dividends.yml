@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Download official Russian CA bundle (verified HTTPS and SHA256)
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --retry 2 https://gu-st.ru/content/Other/doc/russiantrustedca.pem -o "$RUNNER_TEMP/tbank-ca.pem"
+          echo "6d1b66e7c1aa2512ad3abb50d6a6f144c9ee9d80fd7fbe1c9255a39f8e790944  $RUNNER_TEMP/tbank-ca.pem" | sha256sum --check
+          echo "TBANK_CA_FILE=$RUNNER_TEMP/tbank-ca.pem" >> "$GITHUB_ENV"
       - name: Collect dividend events
         env:
           TBANK_TOKEN: ${{ secrets.TBANK_TOKEN }}
