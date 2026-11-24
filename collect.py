@@ -1,16 +1,39 @@
-import os,json,urllib.request,datetime,time, pathlib
+import os,json,urllib.request,urllib.error,datetime,time, pathlib
 BASE="https://invest-public-api.tbank.ru/rest/tinkoff.public.invest.api.contract.v1.InstrumentsService/"
-TOKEN=os.environ["TBANK_TOKEN"]
+TOKEN=os.environ.get("TBANK_TOKEN","").strip()
+if not TOKEN:
+    raise SystemExit("::error::Missing TBANK_TOKEN. Add repository Actions secret TBANK_TOKEN in Settings.")
+if TOKEN.lower().startswith("bearer "):
+    TOKEN=TOKEN[7:].strip()
 def call(method,body):
     req=urllib.request.Request(BASE+method,data=json.dumps(body).encode(),headers={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"})
-    with urllib.request.urlopen(req,timeout=30) as r: return json.load(r)
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req,timeout=30) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            print(f"{method}: HTTP {e.code}; tracking-id={e.headers.get('x-tracking-id','-')}",flush=True)
+            if e.code in (429,500,502,503,504) and attempt<2:
+                time.sleep(3*(attempt+1))
+                continue
+            if e.code in (401,403):
+                raise SystemExit(f"::error::{method}: HTTP {e.code}. Check production read-only token and API access.")
+            raise
+        except urllib.error.URLError as e:
+            print(f"{method}: network error ({type(e.reason).__name__})",flush=True)
+            if attempt<2:
+                time.sleep(3*(attempt+1))
+                continue
+            raise
 def money(x):
     return int(x.get("units",0))+int(x.get("nano",0))/1e9
 blue=set("SBER SBERP GAZP LKOH GMKN NVTK ROSN PLZL YDEX T MTSS".split())
 now=datetime.datetime.now(datetime.timezone.utc)
 start=datetime.datetime(now.year-1,1,1,tzinfo=datetime.timezone.utc)
 end=datetime.datetime(now.year+2,1,1,tzinfo=datetime.timezone.utc)
+print("Checking T-Invest API connection (Shares)...",flush=True)
 shares=call("Shares",{"instrumentStatus":"INSTRUMENT_STATUS_BASE"})["instruments"]
+print(f"API connected: {len(shares)} instruments received",flush=True)
 events=[]; errors=0; total=0
 for s in shares:
     if s.get("currency")!="rub" or s.get("classCode")!="TQBR": continue
@@ -25,6 +48,7 @@ for s in shares:
         errors+=1
         print(s["ticker"],type(e).__name__)
     time.sleep(0.8)
+print(f"Processed {total} shares; errors={errors}; dividends={len(events)}",flush=True)
 if not total or errors==total: raise RuntimeError("No successful dividend requests")
 p=pathlib.Path("data.json")
 p.write_text(json.dumps({"updated":now.isoformat(),"events":events,"errors":errors},ensure_ascii=False),encoding="utf-8")
