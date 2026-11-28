@@ -31,6 +31,8 @@ def collect():
     bonds=call("InstrumentsService","Bonds",{"instrumentStatus":"INSTRUMENT_STATUS_BASE"}).get("instruments",[])
     index={k:s for s in shares+bonds for k in [s.get("uid"),s.get("figi")] if k}
     result=[]
+    coupon_cache={}
+    now=datetime.datetime.now(datetime.timezone.utc)
     for a in accounts:
         if a.get("status")!="ACCOUNT_STATUS_OPEN": continue
         p=call("OperationsService","GetPortfolio",{"accountId":a["id"],"currency":"RUB"})
@@ -39,7 +41,14 @@ def collect():
             t=x.get("instrumentType","")
             if t not in ("share","bond"): continue
             m=index.get(x.get("instrumentUid")) or index.get(x.get("figi")) or {}
-            positions.append({"ticker":m.get("ticker") or x.get("figi") or "—","name":m.get("name",""),"type":t,"quantity":num(x.get("quantity")),"average":money(x.get("averagePositionPrice")),"current":money(x.get("currentPrice")),"yield":num(x.get("expectedYield")),"uid":x.get("instrumentUid","")})
+            uid=x.get("instrumentUid") or m.get("uid") or ""
+            if t=="bond" and uid and uid not in coupon_cache:
+                try:
+                    events=call("InstrumentsService","GetBondCoupons",{"instrumentId":uid,"from":now.isoformat(),"to":(now+datetime.timedelta(days=366)).isoformat()}).get("events",[])
+                    coupon_cache[uid]=[{"date":c.get("couponDate","")[:10],"amount":num(c.get("payOneBond"))} for c in events if c.get("payOneBond",{}).get("currency")=="rub"]
+                except Exception:
+                    coupon_cache[uid]=None
+            positions.append({"ticker":m.get("ticker") or x.get("figi") or "—","name":m.get("name",""),"type":t,"quantity":num(x.get("quantity")),"average":money(x.get("averagePositionPrice")),"current":money(x.get("currentPrice")),"yield":num(x.get("expectedYield")),"uid":uid,"figi":x.get("figi",""),"coupons":coupon_cache.get(uid) if t=="bond" else None})
         result.append({"name":a.get("name") or "Брокерский счёт","total":money(p.get("totalAmountPortfolio")),"positions":positions})
     return {"updated":datetime.datetime.now(datetime.timezone.utc).isoformat(),"accounts":result}
 try:
