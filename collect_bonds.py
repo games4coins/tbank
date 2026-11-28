@@ -27,9 +27,9 @@ for i in range(0,len(eligible),80):
 result=[];errors=0
 for b in eligible:
     try:
-        coupons=call("InstrumentsService","GetBondCoupons",{"instrumentId":b["uid"],"from":now.isoformat(),"to":(now+dt.timedelta(days=366)).isoformat()}).get("events",[])
+        coupons=call("InstrumentsService","GetBondCoupons",{"instrumentId":b["uid"],"from":now.isoformat(),"to":(min(now+dt.timedelta(days=365*15),dt.datetime.fromisoformat(b["maturityDate"].replace("Z","+00:00")))).isoformat()}).get("events",[])
         p=prices.get(b["uid"]) or prices.get(b.get("figi")) or {}
-        result.append({"ticker":b["ticker"],"name":b["name"],"uid":b["uid"],"isin":b.get("isin"),"maturity":b.get("maturityDate","")[:10],"nominal":q(b.get("nominal")),"aci":q(b.get("aciValue")),"quote":q(p["price"]) if p.get("price") else None,"quoteTime":p.get("time"),"lot":b.get("lot",1),"floating":b.get("floatingCouponFlag",False),"amortization":b.get("amortizationFlag",False),"subordinated":b.get("subordinatedFlag",False),"ofz":b.get("ticker","").startswith("SU"),"coupons":[{"date":c.get("couponDate","")[:10],"amount":q(c.get("payOneBond"))} for c in coupons if c.get("payOneBond",{}).get("currency")=="rub"]})
+        result.append({"ticker":b["ticker"],"name":b["name"],"uid":b["uid"],"isin":b.get("isin"),"maturity":b.get("maturityDate","")[:10],"perpetual":b.get("perpetualFlag",False),"nominal":q(b.get("nominal")),"aci":q(b.get("aciValue")),"quote":q(p["price"]) if p.get("price") else None,"quoteTime":p.get("time"),"lot":b.get("lot",1),"floating":b.get("floatingCouponFlag",False),"amortization":b.get("amortizationFlag",False),"subordinated":b.get("subordinatedFlag",False),"ofz":b.get("ticker","").startswith("SU"),"couponHorizon":"maturity_or_15_years","coupons":[{"date":c.get("couponDate","")[:10],"amount":q(c.get("payOneBond"))} for c in coupons if c.get("payOneBond",{}).get("currency")=="rub"]})
     except Exception as e:
         errors+=1
         print("Coupon error",b["ticker"],type(e).__name__,flush=True)
