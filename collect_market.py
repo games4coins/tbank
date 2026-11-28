@@ -33,8 +33,14 @@ for s in shares:
     try:
         daily=candles(s["uid"],"CANDLE_INTERVAL_DAY",180)
         intraday=candles(s["uid"],"CANDLE_INTERVAL_5_MIN",2)
+        book=None
+        try:
+            ob=call("MarketDataService","GetOrderBook",{"instrumentId":s["uid"],"depth":10})
+            book={"time":ob.get("orderbookTs") or ob.get("time"),"bids":[[q(x["price"]),int(x["quantity"])] for x in ob.get("bids",[])],"asks":[[q(x["price"]),int(x["quantity"])] for x in ob.get("asks",[])]}
+        except Exception:
+            pass
         if daily:
-            result.append({"ticker":s["ticker"],"name":s["name"],"sector":s.get("sector",""),"blue":s["ticker"] in blue,"lot":s.get("lot",1),"daily":daily,"intraday":intraday})
+            result.append({"ticker":s["ticker"],"name":s["name"],"sector":s.get("sector",""),"blue":s["ticker"] in blue,"lot":s.get("lot",1),"daily":daily,"intraday":intraday,"book":book})
     except Exception as e:
         errors+=1
         print("Market data error",s["ticker"],type(e).__name__,flush=True)
