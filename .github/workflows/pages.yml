@@ -7,6 +7,7 @@ on:
       - 'index.html'
       - 'market.html'
       - 'bonds.html'
+      - 'guide.html'
       - '.github/workflows/pages.yml'
   workflow_run:
     workflows: ["Dividend data", "Market radar", "Bond calendar"]
@@ -34,7 +35,7 @@ jobs:
         run: |
           mkdir site
           cp index.html site/
-          for file in market.html market.json bonds.html bonds.json; do
+          for file in market.html market.json bonds.html bonds.json guide.html; do
             if test -f "$file"; then cp "$file" site/; fi
           done
           if test -f data.json; then cp data.json site/; fi
